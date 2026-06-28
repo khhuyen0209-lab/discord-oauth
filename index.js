@@ -4,6 +4,7 @@ require("dotenv").config();
 
 // Khởi tạo Firebase Admin SDK
 const admin = require("firebase-admin");
+console.log(admin);
 
 admin.initializeApp({
     credential: admin.credential.cert({
