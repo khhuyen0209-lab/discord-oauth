@@ -1,6 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
+const session = require("express-session");
 
 // Khởi tạo Firebase Admin SDK
 const admin = require("firebase-admin");
@@ -21,6 +22,16 @@ initializeApp({
 const db = getFirestore();
 
 const app = express();
+
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Railway dùng HTTPS qua proxy nên tạm để false
+        maxAge: 1000 * 60 * 60 * 24 * 7 // 7 ngày
+    }
+}));
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -76,6 +87,7 @@ app.get("/auth/discord/callback", async (req, res) => {
         );
 
         const discordUser = user.data;
+        req.session.discordId = discordUser.id;
 
         // Lưu thông tin người dùng vào Firestore bằng db instance mới
         await db.collection("users").doc(discordUser.id).set(
@@ -92,14 +104,50 @@ app.get("/auth/discord/callback", async (req, res) => {
         );
 
         // Trả về kết quả JSON thành công
-        res.json({
-            success: true,
-            user: discordUser,
-        });
+        res.send("Đăng nhập thành công!");
 
     } catch (err) {
         console.error(err.response?.data || err.message);
         res.status(500).send("Đăng nhập thất bại");
+    }
+});
+
+app.get("/api/me", async (req, res) => {
+    try {
+
+        if (!req.session.discordId) {
+            return res.status(401).json({
+                success: false,
+                message: "Chưa đăng nhập"
+            });
+        }
+
+        const doc = await db
+            .collection("users")
+            .doc(req.session.discordId)
+            .get();
+
+        if (!doc.exists) {
+            return res.status(404).json({
+                success: false,
+                message: "Không tìm thấy người dùng"
+            });
+        }
+
+        res.json({
+            success: true,
+            user: doc.data()
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            success: false,
+            message: "Lỗi server"
+        });
+
     }
 });
 
