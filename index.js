@@ -9,7 +9,6 @@ console.log(admin);
 // Khởi tạo Firebase Admin SDK sử dụng cú pháp mới
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
->>>>>>> 16b0afd (Add Firebase Firestore support)
 
 initializeApp({
     credential: cert({
