@@ -2,19 +2,25 @@ const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
+<<<<<<< HEAD
 // Khởi tạo Firebase Admin SDK
 const admin = require("firebase-admin");
 console.log(admin);
+=======
+// Khởi tạo Firebase Admin SDK sử dụng cú pháp mới
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+>>>>>>> 16b0afd (Add Firebase Firestore support)
 
-admin.initializeApp({
-    credential: admin.credential.cert({
+initializeApp({
+    credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
     }),
 });
 
-const db = admin.firestore();
+const db = getFirestore();
 
 const app = express();
 
@@ -26,14 +32,14 @@ app.get("/", (req, res) => {
     res.send("Server OK");
 });
 
-// Chuyển sang Discord (Đã thêm scope=email)
+// Chuyển sang Discord
 app.get("/auth/discord", (req, res) => {
     const url =
         `https://discord.com/oauth2/authorize` +
         `?client_id=${CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
-        `&scope=identify%20email`; // %20 là dấu cách giữa identify và email
+        `&scope=identify%20email`;
 
     res.redirect(url);
 });
@@ -43,7 +49,7 @@ app.get("/auth/discord/callback", async (req, res) => {
     try {
         const code = req.query.code;
 
-        // Lấy Access Token (Đã đồng bộ thêm tham số scope)
+        // Lấy Access Token
         const token = await axios.post(
             "https://discord.com/api/oauth2/token",
             new URLSearchParams({
@@ -73,7 +79,7 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const discordUser = user.data;
 
-        // Lưu thông tin người dùng vào Firestore (Có kèm email)
+        // Lưu thông tin người dùng vào Firestore bằng db instance mới
         await db.collection("users").doc(discordUser.id).set(
             {
                 id: discordUser.id,
