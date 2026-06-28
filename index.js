@@ -8,27 +8,18 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
 const app = express();
-
 app.use(express.json());
 
-// =======================
-// TRUST PROXY
-// =======================
+// ================= TRUST PROXY =================
 app.set("trust proxy", 1);
 
-// =======================
-// CORS FIX (SAFE MODE)
-// =======================
+// ================= CORS =================
 app.use(cors({
-    origin: function (origin, callback) {
-        callback(null, true);
-    },
+    origin: "https://hydyar-yura.web.app",
     credentials: true
 }));
 
-// =======================
-// SESSION
-// =======================
+// ================= SESSION =================
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
@@ -40,9 +31,7 @@ app.use(session({
     }
 }));
 
-// =======================
-// FIREBASE
-// =======================
+// ================= FIREBASE =================
 initializeApp({
     credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
@@ -53,28 +42,13 @@ initializeApp({
 
 const db = getFirestore();
 
-// =======================
-// ENV
-// =======================
+// ================= ENV =================
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 
-// =======================
-// SERVER CHECK
-// =======================
-app.get("/", (req, res) => {
-    res.json({
-        status: "HydYar OK",
-        login: !!req.session.discordId
-    });
-});
-
-// =======================
-// DISCORD LOGIN
-// =======================
+// ================= LOGIN =================
 app.get("/auth/discord", (req, res) => {
-
     const url =
         `https://discord.com/oauth2/authorize` +
         `?client_id=${CLIENT_ID}` +
@@ -85,11 +59,8 @@ app.get("/auth/discord", (req, res) => {
     res.redirect(url);
 });
 
-// =======================
-// CALLBACK
-// =======================
+// ================= CALLBACK =================
 app.get("/auth/discord/callback", async (req, res) => {
-
     try {
 
         const code = req.query.code;
@@ -123,13 +94,16 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const user = userRes.data;
 
+        // SESSION
         req.session.discordId = user.id;
 
+        // SAVE FIRESTORE
         await db.collection("users").doc(user.id).set({
             id: user.id,
             username: user.username,
+            global_name: user.global_name || null,
             avatar: user.avatar,
-            lastLogin: Date.now(),
+            lastLogin: Date.now()
         }, { merge: true });
 
         req.session.save(() => {
@@ -142,15 +116,11 @@ app.get("/auth/discord/callback", async (req, res) => {
     }
 });
 
-// =======================
-// API ME
-// =======================
+// ================= API ME =================
 app.get("/api/me", async (req, res) => {
 
     if (!req.session.discordId) {
-        return res.status(401).json({
-            success: false
-        });
+        return res.json({ success: false });
     }
 
     const doc = await db.collection("users")
@@ -158,9 +128,7 @@ app.get("/api/me", async (req, res) => {
         .get();
 
     if (!doc.exists) {
-        return res.status(404).json({
-            success: false
-        });
+        return res.json({ success: false });
     }
 
     res.json({
@@ -169,20 +137,14 @@ app.get("/api/me", async (req, res) => {
     });
 });
 
-// =======================
-// LOGOUT
-// =======================
+// ================= LOGOUT =================
 app.get("/logout", (req, res) => {
     req.session.destroy(() => {
         res.redirect("https://hydyar-yura.web.app");
     });
 });
 
-// =======================
-// START
-// =======================
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-    console.log("HydYar server running on", PORT);
+// ================= START =================
+app.listen(process.env.PORT || 3000, () => {
+    console.log("HydYar server running");
 });
