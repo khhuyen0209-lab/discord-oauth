@@ -7,7 +7,9 @@ const session = require("express-session");
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
-// Init Firebase
+// =======================
+// INIT FIREBASE
+// =======================
 initializeApp({
     credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
@@ -18,10 +20,13 @@ initializeApp({
 
 const db = getFirestore();
 
+// =======================
+// EXPRESS APP
+// =======================
 const app = express();
 
 // =======================
-// SESSION (FIX RAILWAY + DISCORD OAUTH)
+// SESSION CONFIG (RAILWAY FIX)
 // =======================
 app.set("trust proxy", 1);
 
@@ -44,10 +49,23 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 
 // =======================
-// HOME
+// HOME ROUTE (SERVER OK + LOGIN STATE)
 // =======================
 app.get("/", (req, res) => {
-    res.send("Server OK");
+    if (!req.session.discordId) {
+        return res.send(`
+            <h1>Server OK 🚀</h1>
+            <p>Chưa login</p>
+            <a href="/auth/discord">Login Discord</a>
+        `);
+    }
+
+    res.send(`
+        <h1>Server OK 🚀</h1>
+        <p>Đã login Discord ✔</p>
+        <a href="/api/me">Xem profile</a><br>
+        <a href="/logout">Logout</a>
+    `);
 });
 
 // =======================
@@ -71,6 +89,7 @@ app.get("/auth/discord/callback", async (req, res) => {
     try {
         const code = req.query.code;
 
+        // GET TOKEN
         const tokenRes = await axios.post(
             "https://discord.com/api/oauth2/token",
             new URLSearchParams({
@@ -90,6 +109,7 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const accessToken = tokenRes.data.access_token;
 
+        // GET USER
         const userRes = await axios.get(
             "https://discord.com/api/users/@me",
             {
@@ -101,7 +121,9 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const user = userRes.data;
 
+        // =======================
         // SET SESSION
+        // =======================
         req.session.discordId = user.id;
 
         // SAVE FIRESTORE
@@ -115,12 +137,13 @@ app.get("/auth/discord/callback", async (req, res) => {
             lastLogin: Date.now(),
         }, { merge: true });
 
+        // SAVE SESSION THEN REDIRECT
         req.session.save(() => {
-            res.send("Đăng nhập thành công!");
+            res.redirect("/");
         });
 
     } catch (err) {
-        console.error(err.response?.data || err.message);
+        console.error("DISCORD ERROR:", err.response?.data || err.message);
         res.status(500).send("Đăng nhập thất bại");
     }
 });
@@ -170,10 +193,12 @@ app.get("/api/me", async (req, res) => {
 // =======================
 app.get("/logout", (req, res) => {
     req.session.destroy(() => {
-        res.send("Đã logout");
+        res.redirect("/");
     });
 });
 
+// =======================
+// START SERVER
 // =======================
 const PORT = process.env.PORT || 3000;
 
