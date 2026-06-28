@@ -73,22 +73,39 @@ app.get("/auth/discord/callback", async (req, res) => { try { const code =
     }
 });
 // ======================= GET USER INFO =======================
-app.get("/api/me", async (req, res) => { try { if (!req.session.discordId) 
-       
-            return res.status(401).json({ success: false, message: "Chưa đăng nhập"
-           });
+app.get("/api/me", async (req, res) => {
+    try {
+
+        if (!req.session.discordId) {
+            return res.status(401).json({
+                success: false,
+                message: "Chưa đăng nhập"
+            });
         }
-        const doc = await db .collection("users") 
-            .doc(req.session.discordId) .get();
-        if (!doc.exists) { return res.status(404).json({ success: false, 
+
+        const doc = await db
+            .collection("users")
+            .doc(req.session.discordId)
+            .get();
+
+        if (!doc.exists) {
+            return res.status(404).json({
+                success: false,
                 message: "Không tìm thấy user"
             });
         }
-        res.json({ success: true, user: doc.data()
+
+        return res.json({
+            success: true,
+            user: doc.data()
         });
+
     } catch (err) {
-        console.error(err); res.status(500).json({ success: false, message: 
-            "Lỗi server"
+        console.error(err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Lỗi server"
         });
     }
 });
