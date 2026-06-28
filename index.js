@@ -1,5 +1,6 @@
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors");
 require("dotenv").config();
 const session = require("express-session");
 
@@ -8,28 +9,28 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
 // =======================
-// INIT FIREBASE
-// =======================
-initializeApp({
-    credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    }),
-});
-
-const db = getFirestore();
-
-// =======================
-// EXPRESS APP
+// INIT APP
 // =======================
 const app = express();
 
+app.use(express.json());
+
 // =======================
-// SESSION CONFIG (RAILWAY FIX)
+// TRUST PROXY (RAILWAY FIX)
 // =======================
 app.set("trust proxy", 1);
 
+// =======================
+// CORS FIX (QUAN TRỌNG NHẤT)
+// =======================
+app.use(cors({
+    origin: "https://hydyar-yura.web.app",
+    credentials: true
+}));
+
+// =======================
+// SESSION (COOKIE FIX)
+// =======================
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
@@ -42,6 +43,19 @@ app.use(session({
 }));
 
 // =======================
+// FIREBASE INIT
+// =======================
+initializeApp({
+    credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+});
+
+const db = getFirestore();
+
+// =======================
 // ENV
 // =======================
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -49,29 +63,17 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 
 // =======================
-// HOME ROUTE (SERVER OK + LOGIN STATE)
+// HEALTH CHECK
 // =======================
 app.get("/", (req, res) => {
-    if (!req.session.discordId) {
-        return res.send(`
-            <h1>Server OK 🚀</h1>
-            <p>Chưa login</p>
-            <a href="/auth/discord">Login Discord</a>
-        `);
-    }
-
-    res.send(`
-        <h1>Server OK 🚀</h1>
-        <p>Đã login Discord ✔</p>
-        <a href="/api/me">Xem profile</a><br>
-        <a href="/logout">Logout</a>
-    `);
+    res.send("HydYar Server OK 🚀");
 });
 
 // =======================
-// LOGIN DISCORD
+// DISCORD LOGIN
 // =======================
 app.get("/auth/discord", (req, res) => {
+
     const url =
         `https://discord.com/oauth2/authorize` +
         `?client_id=${CLIENT_ID}` +
@@ -83,13 +85,14 @@ app.get("/auth/discord", (req, res) => {
 });
 
 // =======================
-// CALLBACK DISCORD
+// CALLBACK
 // =======================
 app.get("/auth/discord/callback", async (req, res) => {
+
     try {
+
         const code = req.query.code;
 
-        // GET TOKEN
         const tokenRes = await axios.post(
             "https://discord.com/api/oauth2/token",
             new URLSearchParams({
@@ -109,7 +112,6 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const accessToken = tokenRes.data.access_token;
 
-        // GET USER
         const userRes = await axios.get(
             "https://discord.com/api/users/@me",
             {
@@ -122,11 +124,13 @@ app.get("/auth/discord/callback", async (req, res) => {
         const user = userRes.data;
 
         // =======================
-        // SET SESSION
+        // SESSION SAVE
         // =======================
         req.session.discordId = user.id;
 
-        // SAVE FIRESTORE
+        // =======================
+        // FIRESTORE SAVE
+        // =======================
         await db.collection("users").doc(user.id).set({
             id: user.id,
             username: user.username,
@@ -137,27 +141,27 @@ app.get("/auth/discord/callback", async (req, res) => {
             lastLogin: Date.now(),
         }, { merge: true });
 
-        // SAVE SESSION THEN REDIRECT
         req.session.save(() => {
-            res.redirect("/");
+            res.redirect("https://hydyar-yura.web.app");
         });
 
     } catch (err) {
-        console.error("DISCORD ERROR:", err.response?.data || err.message);
-        res.status(500).send("Đăng nhập thất bại");
+        console.error("OAuth error:", err.response?.data || err.message);
+        res.status(500).send("Login failed");
     }
 });
 
 // =======================
-// API ME
+// API ME (AUTH SYNC)
 // =======================
 app.get("/api/me", async (req, res) => {
+
     try {
 
         if (!req.session.discordId) {
             return res.status(401).json({
                 success: false,
-                message: "Chưa đăng nhập"
+                message: "Not logged in"
             });
         }
 
@@ -169,11 +173,11 @@ app.get("/api/me", async (req, res) => {
         if (!doc.exists) {
             return res.status(404).json({
                 success: false,
-                message: "Không tìm thấy user"
+                message: "User not found"
             });
         }
 
-        return res.json({
+        res.json({
             success: true,
             user: doc.data()
         });
@@ -181,9 +185,9 @@ app.get("/api/me", async (req, res) => {
     } catch (err) {
         console.error(err);
 
-        return res.status(500).json({
+        res.status(500).json({
             success: false,
-            message: "Lỗi server"
+            message: "Server error"
         });
     }
 });
@@ -193,7 +197,7 @@ app.get("/api/me", async (req, res) => {
 // =======================
 app.get("/logout", (req, res) => {
     req.session.destroy(() => {
-        res.redirect("/");
+        res.redirect("https://hydyar-yura.web.app");
     });
 });
 
@@ -203,5 +207,5 @@ app.get("/logout", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server chạy ở cổng ${PORT}`);
+    console.log(`HydYar server running on ${PORT}`);
 });
