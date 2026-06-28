@@ -8,25 +8,25 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
 const app = express();
+
+app.set("trust proxy", 1);
 app.use(express.json());
 
-// ================= TRUST PROXY =================
-app.set("trust proxy", 1);
-
-// ================= CORS =================
+// ================= CORS (FIXED) =================
 app.use(cors({
     origin: "https://hydyar-yura.web.app",
     credentials: true
 }));
 
-// ================= SESSION =================
+// ================= SESSION (FIXED FOR RAILWAY) =================
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true,
-        sameSite: "none",
+        secure: true,        // HTTPS only
+        sameSite: "none",    // cross-site cookie
+        httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24 * 7
     }
 }));
@@ -36,7 +36,7 @@ initializeApp({
     credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
     }),
 });
 
@@ -46,6 +46,11 @@ const db = getFirestore();
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
+
+// ================= HEALTH CHECK =================
+app.get("/", (req, res) => {
+    res.send("HydYar Server OK 🚀");
+});
 
 // ================= LOGIN =================
 app.get("/auth/discord", (req, res) => {
@@ -62,7 +67,6 @@ app.get("/auth/discord", (req, res) => {
 // ================= CALLBACK =================
 app.get("/auth/discord/callback", async (req, res) => {
     try {
-
         const code = req.query.code;
 
         const tokenRes = await axios.post(
@@ -73,6 +77,7 @@ app.get("/auth/discord/callback", async (req, res) => {
                 grant_type: "authorization_code",
                 code,
                 redirect_uri: REDIRECT_URI,
+                scope: "identify email"
             }),
             {
                 headers: {
@@ -94,18 +99,20 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const user = userRes.data;
 
-        // SESSION
+        // ================= SESSION =================
         req.session.discordId = user.id;
 
-        // SAVE FIRESTORE
+        // ================= FIRESTORE SAVE =================
         await db.collection("users").doc(user.id).set({
             id: user.id,
             username: user.username,
             global_name: user.global_name || null,
             avatar: user.avatar,
+            email: user.email || null,
             lastLogin: Date.now()
         }, { merge: true });
 
+        // IMPORTANT: save session before redirect
         req.session.save(() => {
             res.redirect("https://hydyar-yura.web.app");
         });
@@ -118,23 +125,38 @@ app.get("/auth/discord/callback", async (req, res) => {
 
 // ================= API ME =================
 app.get("/api/me", async (req, res) => {
+    try {
+        if (!req.session.discordId) {
+            return res.status(401).json({
+                success: false,
+                message: "Not logged in"
+            });
+        }
 
-    if (!req.session.discordId) {
-        return res.json({ success: false });
+        const doc = await db.collection("users")
+            .doc(req.session.discordId)
+            .get();
+
+        if (!doc.exists) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            user: doc.data()
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            success: false,
+            message: "Server error"
+        });
     }
-
-    const doc = await db.collection("users")
-        .doc(req.session.discordId)
-        .get();
-
-    if (!doc.exists) {
-        return res.json({ success: false });
-    }
-
-    res.json({
-        success: true,
-        user: doc.data()
-    });
 });
 
 // ================= LOGOUT =================
@@ -145,6 +167,7 @@ app.get("/logout", (req, res) => {
 });
 
 // ================= START =================
-app.listen(process.env.PORT || 3000, () => {
-    console.log("HydYar server running");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`HydYar server running on ${PORT}`);
 });
