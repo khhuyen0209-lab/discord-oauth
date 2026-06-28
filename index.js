@@ -74,10 +74,9 @@ app.get("/auth/discord/callback", async (req, res) => { try { const code =
 });
 // ======================= GET USER INFO =======================
 app.get("/api/me", async (req, res) => { try { if (!req.session.discordId) 
-        {
-            return res.status(401).json({ success: false, message: "Chưa 
-                đăng nhập"
-            });
+       
+            return res.status(401).json({ success: false, message: "Chưa đăng nhập"
+           });
         }
         const doc = await db .collection("users") 
             .doc(req.session.discordId) .get();
