@@ -4,32 +4,30 @@ const cors = require("cors");
 require("dotenv").config();
 const session = require("express-session");
 
-// Firebase Admin SDK
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
-// =======================
-// INIT APP
-// =======================
 const app = express();
 
 app.use(express.json());
 
 // =======================
-// TRUST PROXY (RAILWAY FIX)
+// TRUST PROXY
 // =======================
 app.set("trust proxy", 1);
 
 // =======================
-// CORS FIX (QUAN TRỌNG NHẤT)
+// CORS FIX (SAFE MODE)
 // =======================
 app.use(cors({
-    origin: "https://hydyar-yura.web.app",
+    origin: function (origin, callback) {
+        callback(null, true);
+    },
     credentials: true
 }));
 
 // =======================
-// SESSION (COOKIE FIX)
+// SESSION
 // =======================
 app.use(session({
     secret: process.env.SESSION_SECRET,
@@ -43,7 +41,7 @@ app.use(session({
 }));
 
 // =======================
-// FIREBASE INIT
+// FIREBASE
 // =======================
 initializeApp({
     credential: cert({
@@ -63,10 +61,13 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 
 // =======================
-// HEALTH CHECK
+// SERVER CHECK
 // =======================
 app.get("/", (req, res) => {
-    res.send("HydYar Server OK 🚀");
+    res.json({
+        status: "HydYar OK",
+        login: !!req.session.discordId
+    });
 });
 
 // =======================
@@ -101,7 +102,6 @@ app.get("/auth/discord/callback", async (req, res) => {
                 grant_type: "authorization_code",
                 code,
                 redirect_uri: REDIRECT_URI,
-                scope: "identify email",
             }),
             {
                 headers: {
@@ -123,21 +123,12 @@ app.get("/auth/discord/callback", async (req, res) => {
 
         const user = userRes.data;
 
-        // =======================
-        // SESSION SAVE
-        // =======================
         req.session.discordId = user.id;
 
-        // =======================
-        // FIRESTORE SAVE
-        // =======================
         await db.collection("users").doc(user.id).set({
             id: user.id,
             username: user.username,
-            global_name: user.global_name || null,
             avatar: user.avatar,
-            discriminator: user.discriminator,
-            email: user.email || null,
             lastLogin: Date.now(),
         }, { merge: true });
 
@@ -152,44 +143,30 @@ app.get("/auth/discord/callback", async (req, res) => {
 });
 
 // =======================
-// API ME (AUTH SYNC)
+// API ME
 // =======================
 app.get("/api/me", async (req, res) => {
 
-    try {
-
-        if (!req.session.discordId) {
-            return res.status(401).json({
-                success: false,
-                message: "Not logged in"
-            });
-        }
-
-        const doc = await db
-            .collection("users")
-            .doc(req.session.discordId)
-            .get();
-
-        if (!doc.exists) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        res.json({
-            success: true,
-            user: doc.data()
-        });
-
-    } catch (err) {
-        console.error(err);
-
-        res.status(500).json({
-            success: false,
-            message: "Server error"
+    if (!req.session.discordId) {
+        return res.status(401).json({
+            success: false
         });
     }
+
+    const doc = await db.collection("users")
+        .doc(req.session.discordId)
+        .get();
+
+    if (!doc.exists) {
+        return res.status(404).json({
+            success: false
+        });
+    }
+
+    res.json({
+        success: true,
+        user: doc.data()
+    });
 });
 
 // =======================
@@ -202,10 +179,10 @@ app.get("/logout", (req, res) => {
 });
 
 // =======================
-// START SERVER
+// START
 // =======================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`HydYar server running on ${PORT}`);
+    console.log("HydYar server running on", PORT);
 });
