@@ -2,7 +2,7 @@ const express = require("express"); const axios = require("axios");
 require("dotenv").config(); const session = require("express-session");
 // Firebase Admin SDK
 const admin = require("firebase-admin"); const { initializeApp, cert } = 
-require("firebase-admin/app"); const { getFirestore } = 
+ require("firebase-admin/app"); const { getFirestore } = 
 require("firebase-admin/firestore");
 // Init Firebase
 initializeApp({ credential: cert({ projectId: 
@@ -16,8 +16,9 @@ const db = getFirestore(); const app = express();
 app.set("trust proxy", 1); app.use(session({ secret: 
     process.env.SESSION_SECRET, resave: false, saveUninitialized: false, 
     cookie: {
-        secure: true, // HTTPS bắt buộc trên Railway sameSite: "none", // 
-        QUAN TRỌNG cho OAuth Discord maxAge: 1000 * 60 * 60 * 24 * 7
+    secure: true,
+    sameSite: "none",
+    maxAge: 1000 * 60 * 60 * 24 * 7
     }
 }));
 // ENV
