@@ -2,6 +2,19 @@ const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
+// Khởi tạo Firebase Admin SDK
+const admin = require("firebase-admin");
+
+admin.initializeApp({
+    credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+});
+
+const db = admin.firestore();
+
 const app = express();
 
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -12,14 +25,14 @@ app.get("/", (req, res) => {
     res.send("Server OK");
 });
 
-// Chuyển sang Discord
+// Chuyển sang Discord (Đã thêm scope=email)
 app.get("/auth/discord", (req, res) => {
     const url =
         `https://discord.com/oauth2/authorize` +
         `?client_id=${CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
-        `&scope=identify`;
+        `&scope=identify%20email`; // %20 là dấu cách giữa identify và email
 
     res.redirect(url);
 });
@@ -29,6 +42,7 @@ app.get("/auth/discord/callback", async (req, res) => {
     try {
         const code = req.query.code;
 
+        // Lấy Access Token (Đã đồng bộ thêm tham số scope)
         const token = await axios.post(
             "https://discord.com/api/oauth2/token",
             new URLSearchParams({
@@ -37,6 +51,7 @@ app.get("/auth/discord/callback", async (req, res) => {
                 grant_type: "authorization_code",
                 code,
                 redirect_uri: REDIRECT_URI,
+                scope: "identify email",
             }),
             {
                 headers: {
@@ -45,6 +60,7 @@ app.get("/auth/discord/callback", async (req, res) => {
             }
         );
 
+        // Lấy thông tin Discord người dùng
         const user = await axios.get(
             "https://discord.com/api/users/@me",
             {
@@ -54,7 +70,28 @@ app.get("/auth/discord/callback", async (req, res) => {
             }
         );
 
-        res.json(user.data);
+        const discordUser = user.data;
+
+        // Lưu thông tin người dùng vào Firestore (Có kèm email)
+        await db.collection("users").doc(discordUser.id).set(
+            {
+                id: discordUser.id,
+                username: discordUser.username,
+                global_name: discordUser.global_name || null,
+                avatar: discordUser.avatar,
+                discriminator: discordUser.discriminator,
+                email: discordUser.email || null,
+                lastLogin: Date.now(),
+            },
+            { merge: true }
+        );
+
+        // Trả về kết quả JSON thành công
+        res.json({
+            success: true,
+            user: discordUser,
+        });
+
     } catch (err) {
         console.error(err.response?.data || err.message);
         res.status(500).send("Đăng nhập thất bại");
